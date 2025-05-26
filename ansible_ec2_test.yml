@@ -4,6 +4,17 @@
   become: yes # sudo 권한으로 실행
 
   tasks:
+  - name: dpkg stop and apt lock confirm
+      ansible.builtin.shell: |
+        sudo dpkg --configure -a
+        sudo rm -f /var/lib/dpkg/lock-frontend
+        sudo rm -f /var/lib/dpkg/lock
+        sudo rm -f /var/cache/apt/archives/lock
+      args:
+        warn: no
+      failed_when: false
+      changed_when: false
+
     - name: Update apt cache
       ansible.builtin.apt:
         update_cache: yes
