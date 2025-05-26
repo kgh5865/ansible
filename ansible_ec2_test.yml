@@ -5,7 +5,7 @@
 
   tasks:
   - name: dpkg stop and apt lock confirm
-      ansible.builtin.shell: |
+      ansible.builtin.shell: |  
         sudo dpkg --configure -a
         sudo rm -f /var/lib/dpkg/lock-frontend
         sudo rm -f /var/lib/dpkg/lock
