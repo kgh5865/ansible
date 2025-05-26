@@ -4,7 +4,7 @@
   become: yes # sudo 권한으로 실행
 
   tasks:
-  - name: dpkg stop and apt lock confirm
+    - name: dpkg stop and apt lock confirm
       ansible.builtin.shell: |  
         sudo dpkg --configure -a
         sudo rm -f /var/lib/dpkg/lock-frontend
