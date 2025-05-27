@@ -4,12 +4,16 @@
   become: yes # sudo 권한으로 실행
 
   tasks:
-    - name: dpkg stop and apt lock confirm
-      ansible.builtin.shell: |  
+    - name: dpkg, apt, debconf 잠금이 없는지 확인하고 정리합니다.
+      ansible.builtin.shell: |
         sudo dpkg --configure -a
         sudo rm -f /var/lib/dpkg/lock-frontend
         sudo rm -f /var/lib/dpkg/lock
         sudo rm -f /var/cache/apt/archives/lock
+        sudo rm -f /var/cache/debconf/config.dat.tmp
+        sudo rm -f /var/cache/debconf/config.dat
+        sudo apt clean # 캐시 정리
+        sudo apt update
       args:
         warn: no
       failed_when: false
