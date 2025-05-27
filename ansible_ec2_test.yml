@@ -12,7 +12,7 @@
         sudo rm -f /var/cache/apt/archives/lock
         sudo rm -f /var/cache/debconf/config.dat.tmp
         sudo rm -f /var/cache/debconf/config.dat
-        sudo apt clean # 캐시 정리
+        sudo apt clean
         sudo apt update
       args:
         warn: no
