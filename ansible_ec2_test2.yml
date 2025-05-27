@@ -78,6 +78,6 @@
 
   handlers:
     - name: Reload Nginx
-      ansible.builtin.Service:
+      ansible.builtin.service:
         name: nginx
         state: reloaded
