@@ -18,7 +18,7 @@
         state: present
 
     - name: Ensure Nginx service is running and enabled
-      ansible.builtin.Service:
+      ansible.builtin.service:
         name: nginx
         state: started
         enabled: yes
