@@ -1,0 +1,84 @@
+- name: Install Python 3 from Nexus on EC2 Ubuntu
+  hosts: ec2-inventory # AWX 인벤토리의 그룹명
+  gather_facts: yes # 원격 호스트의 정보 수집 여부
+  become: yes # EC2에 파일을 배포할 시 권한 문제 발생할 경우 sudo 실행
+
+  vars:
+    nexus_url: "http://172.17.0.1:8081/repository/test-repo/test/Python-3.13.3.tgz" # !!! Nexus의 실제 IP 또는 호스트명으로 변경하세요 !!!
+    download_dir: "/tmp/python_install" # EC2 Ubuntu에 임시로 저장하는 경로
+    install_base_dir: "/home/ubuntu" # 실제 Python 을 설치할 상위 경로 (일반적으로 /opt 에 설치)
+    python_extracted_dir_name: "Python-3.13.3" # 압축 해제 후 생성될 디렉토리 이름
+    python_tgz_name: "Python-3.13.3.tgz" # 다운로드할 파일 이름
+    python_install_path: "{{ install_base_dir }}/{{ python_extracted_dir_name }}" # Python이 최종적으로 설치될 경로
+
+  tasks:
+    - name: 임시 다운로드 디렉토리 생성
+      ansible.builtin.file:
+        path: "{{ download_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Nexus에서 python3.tgz 다운로드
+      ansible.builtin.get_url:
+        url: "{{ nexus_url }}"
+        dest: "{{ download_dir }}/{{ python_tgz_name }}"
+        username: "{{ nexus_username | default(omit) }}"
+        password: "{{ nexus_password | default(omit) }}"
+        validate_certs: no # 개발 환경에서는 no로 설정할 수 있지만, 프로덕션에서는 CA 인증서 유효성 검사 필요
+
+    - name: 설치 베이스 디렉토리 생성
+      ansible.builtin.file:
+        path: "{{ install_base_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: python3.tgz 압축 해제
+      ansible.builtin.unarchive:
+        src: "{{ download_dir }}/{{ python_tgz_name }}"
+        dest: "{{ install_base_dir }}" # /opt 에 압축 해제하면 /opt/Python-3.13.3 이 생성됩니다.
+        remote_src: yes # 원격지에서 다운로드한 파일임을 명시
+
+    - name: Python 빌드 종속성 설치 (Ubuntu)
+      ansible.builtin.apt: #최신 Python3를 사용하기 위함
+        name:
+          - build-essential
+          - libssl-dev
+          - zlib1g-dev
+          - libbz2-dev
+          - libreadline-dev
+          - libsqlite3-dev
+          - wget
+          - curl
+          - libncurses-dev
+          - libffi-dev
+          - liblzma-dev
+        state: present
+        update_cache: yes
+      when: ansible_os_family == "Debian" # Ubuntu는 Debian 계열에 속함
+
+    - name: 소스에서 Python 구성, 컴파일 및 설치
+      ansible.builtin.shell: |
+        ./configure --enable-optimizations --prefix={{ python_install_path }}
+        make -j$(nproc)
+        make install
+      args:
+        chdir: "{{ python_install_path }}" # 압축 해제된 소스 코드 디렉토리로 이동
+      # 이 태스크는 Python이 이미 설치되어 있지 않은 경우에만 실행하는 것이 좋습니다.
+      # 멱등성(idempotency)을 위해 'creates'를 사용할 수 있습니다.
+      creates: "{{ python_install_path }}/bin/python3"
+
+    - name: /usr/local/bin에 python3 심볼릭 링크 생성
+      ansible.builtin.file:
+        src: "{{ python_install_path }}/bin/python3" # 새로 설치된 python3 실행 파일 경로
+        dest: "/usr/local/bin/python3"
+        state: link
+        force: yes # 기존 링크가 있다면 덮어씁니다.
+
+    - name: Python 3 설치 확인
+      ansible.builtin.command: python3 --version
+      register: python_version_output
+      changed_when: false # 이 커맨드는 시스템 상태를 변경하지 않으므로 항상 false로 설정
+
+    - name: Python 3 버전 출력
+      ansible.builtin.debug:
+        msg: "Python 3 installed version: {{ python_version_output.stdout }}"
