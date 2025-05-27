@@ -4,21 +4,6 @@
   become: yes # sudo 권한으로 실행
 
   tasks:
-    - name: dpkg, apt, debconf 잠금이 없는지 확인하고 정리합니다.
-      ansible.builtin.shell: |
-        sudo dpkg --configure -a
-        sudo rm -f /var/lib/dpkg/lock-frontend
-        sudo rm -f /var/lib/dpkg/lock
-        sudo rm -f /var/cache/apt/archives/lock
-        sudo rm -f /var/cache/debconf/config.dat.tmp
-        sudo rm -f /var/cache/debconf/config.dat
-        sudo apt clean
-        sudo apt update
-      args:
-        warn: no
-      failed_when: false
-      changed_when: false
-
     - name: Update apt cache
       ansible.builtin.apt:
         update_cache: yes
@@ -40,11 +25,10 @@
           <!DOCTYPE html>
           <html>
           <head>
-              <title>Simple Nginx Page</title>
+              <title>하이하이이</title>
           </head>
           <body>
-              <h1>Hello from Nginx on EC2!</h1>
-              <p>This page was deployed by Ansible.</p>
+              <h1>헬로</h1>
           </body>
           </html>
         dest: /var/www/html/index.html

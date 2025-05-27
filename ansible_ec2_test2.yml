@@ -1,11 +1,7 @@
 ---
-- name: Install and Configure Nginx on Ubuntu 20.04
-  hosts: all
-  become: yes # 이 플레이북의 모든 작업은 sudo 권한으로 실행됩니다.
-
-  vars:
-    nginx_port: 80 # Nginx가 리스닝할 기본 포트
-    nginx_root_dir: /var/www/html # Nginx 웹 루트 디렉토리
+- name: Simple Nginx Deployment
+  hosts: all # 또는 AWX 인벤토리의 EC2 그룹 이름 (예: ec2_instances)
+  become: yes # sudo 권한으로 실행
 
   tasks:
     - name: Update apt cache
@@ -23,61 +19,19 @@
         state: started
         enabled: yes
 
-    - name: Create Nginx default site configuration
-      ansible.builtin.copy:
-        content: |
-          server {
-              listen {{ nginx_port }} default_server;
-              listen [::]:{{ nginx_port }} default_server;
-
-              root {{ nginx_root_dir }};
-              index index.html index.htm index.nginx-debian.html;
-
-              server_name _;
-
-              location / {
-                  try_files $uri $uri/ =404;
-              }
-          }
-        dest: /etc/nginx/sites-available/default
-        owner: root
-        group: root
-        mode: '0644'
-      notify: Reload Nginx
-
-    - name: Create a simple index.html file
+    - name: Create a basic index.html file
       ansible.builtin.copy:
         content: |
           <!DOCTYPE html>
           <html>
           <head>
-              <title>HI, HI</title>
-              <style>
-                  body {
-                      width: 35em;
-                      margin: 0 auto;
-                      font-family: Tahoma, Verdana, Arial, sans-serif;
-                  }
-              </style>
+              <title>하이하이이</title>
           </head>
           <body>
-              <h1>Welcome to Nginx on Ubuntu 20.04!</h1>
+              <h1>헬로</h1>
           </body>
           </html>
-        dest: "{{ nginx_root_dir }}/index.html"
+        dest: /var/www/html/index.html
         owner: www-data
         group: www-data
         mode: '0644'
-
-    - name: Enable the default site configuration
-      ansible.builtin.file:
-        src: /etc/nginx/sites-available/default
-        dest: /etc/nginx/sites-enabled/default
-        state: link
-      notify: Reload Nginx
-
-  handlers:
-    - name: Reload Nginx
-      ansible.builtin.service:
-        name: nginx
-        state: reloaded
