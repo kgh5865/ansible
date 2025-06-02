@@ -1,0 +1,98 @@
+---
+- name: Install Python 3.13.3 from Nexus on Rocky Linux 8
+  hosts: all # AWX 인벤토리 그룹
+  gather_facts: yes
+  become: yes # sudo 상승
+
+  vars:
+    download_dir: "/tmp/python_install"
+    install_base_dir: "/opt" # RHEL 계열 관례상 /opt 사용
+    python_extracted_dir_name: "Python-3.13.3"
+    python_tgz_name: "Python-3.13.3.tgz"
+    python_install_path: "/opt/python-3.13.3"
+
+  tasks:
+    # **추가된 디버그 태스크**
+    - name: Debug ansible_os_family
+      debug:
+        msg: "ansible_os_family is: {{ ansible_os_family }}"
+
+    # 1) 임시 다운로드 디렉터리
+    - name: Create temporary download directory
+      file:
+        path: "{{ download_dir }}"
+        state: directory
+        mode: '0755'
+
+    # 2) Nexus에서 소스 내려받기
+    - name: Download Python tarball from Nexus
+      get_url:
+        url: "http://{{ REPO_URL }}/repository/kgh5865/python/Python-3.13.3.tgz"
+        url_username: "{{ REPO_USER }}"
+        url_password: "{{ REPO_PASS }}"
+        dest: "{{ download_dir }}/{{ python_tgz_name }}"
+        validate_certs: no
+
+    # 3) /opt 생성
+    - name: Ensure install base directory exists
+      file:
+        path: "{{ install_base_dir }}"
+        state: directory
+        mode: '0755'
+
+    # 4) 압축 해제
+    - name: Extract Python source
+      unarchive:
+        src: "{{ download_dir }}/{{ python_tgz_name }}"
+        dest: "{{ install_base_dir }}"
+        remote_src: yes
+
+    # 5) 빌드 종속성 설치 (Rocky 8)
+    - name: Install build dependencies (Rocky 8)
+      dnf:
+        name:
+          - gcc
+          - make
+          - openssl-devel
+          - bzip2-devel
+          - libffi-devel
+          - zlib-devel
+          - readline-devel
+          - sqlite-devel
+          - xz-devel
+          - ncurses-devel
+          - wget
+          - curl
+          - tar
+          - findutils
+        state: latest
+        update_cache: yes
+      when: ansible_os_family == "Rocky"
+
+    # 6) configure & make & make install
+    - name: Configure, compile and install Python
+      shell: |
+        ./configure --enable-optimizations --prefix={{ python_install_path }}
+        make -j$(nproc)
+        make install
+      args:
+        chdir: "{{ install_base_dir }}/{{ python_extracted_dir_name }}"
+        creates: "{{ python_install_path }}/bin/python3"
+
+    # 7) /usr/local/bin 심볼릭 링크
+    - name: Create python3 symlink in /usr/local/bin
+      file:
+        src: "{{ python_install_path }}/bin/python3"
+        dest: "/usr/local/bin/python3"
+        state: link
+        force: yes
+
+    # 8) 설치 확인
+    - name: Check Python version
+      command: python3 --version
+      register: python_version_output
+      changed_when: false
+
+    - name: Show installed Python version
+      debug:
+        msg: "Python 3 installed version: {{ python_version_output.stdout }}"
