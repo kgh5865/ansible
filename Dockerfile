@@ -37,7 +37,7 @@ RUN chmod 600 /home/ansible/.ssh/authorized_keys && \
     chown ansible:ansible /home/ansible/.ssh/authorized_keys
 
 # ansible 사용자로 변경
-USER ansible
+# USER ansible
 
 # SSH port
 EXPOSE 22
