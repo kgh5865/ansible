@@ -12,8 +12,11 @@ RUN rm -f /run/nologin
 # SSH 서버의 호스트 키 자동 생성
 RUN ssh-keygen -A
 
-# SSHD 설정 파일의 권한을 명시적으로 설정합니다.
+# SSHD 설정 파일의 권한을 명시적으로 설정합니다.(TEST)
 RUN chmod 600 /etc/ssh/sshd_config
+
+# /etc/ssh 디렉토리의 권한도 확인하고 필요하면 설정(일반적인 권한 TEST)
+RUN chmod 755 /etc/ssh
 
 # ansible 사용자 생성 & 비번 없이 sudo 권한 설정
 RUN adduser ansible && \
