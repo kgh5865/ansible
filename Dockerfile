@@ -16,18 +16,12 @@ RUN adduser ansible && \
     mkdir -p /etc/sudoers.d && \
     echo "ansible ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers.d/ansible
 
-# ansible 사용자로 변경
-USER ansible
-
 # .ssh 권한 설정
 RUN mkdir -p /home/ansible/.ssh && \
     chmod 700 /home/ansible/.ssh
 
 # awx-rocky.pub 파일 가져오기
 COPY awx-rocky.pub /home/ansible/.ssh/authorized_keys
-
-# root 사용자로 변경
-USER root
 
 # public key 파일 권한, 소유권 설정
 RUN chmod 600 /home/ansible/.ssh/authorized_keys
