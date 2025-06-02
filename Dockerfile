@@ -3,7 +3,8 @@ FROM rockylinux:8
 # 필요한 패키지 다운 및 캐시 정리
 RUN dnf update -y && \
     dnf -y install sudo python36 openssh-server && \
-    dnf clean all
+    dnf clean all && \
+    rm -rf /var/cache/dnf
 
 # pam_nologin(일반 사용자의 로그인을 일시적으로 비활성화) 오류 제거
 RUN rm -f /run/nologin
