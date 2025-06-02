@@ -24,7 +24,7 @@ RUN mkdir -p /home/ansible/.ssh && \
     chmod 700 /home/ansible/.ssh
 
 # awx-rocky.pub 파일 가져오기
-COPY ../my_key.pub /home/ansible/.ssh/authorized_keys
+COPY ../awx-rocky.pub /home/ansible/.ssh/authorized_keys
 
 # public key 파일 권한, 소유권 설정
 RUN chmod 600 /home/ansible/.ssh/authorized_keys
