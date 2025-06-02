@@ -1,66 +1,188 @@
 ---
-- name: Install Python 3 from Nexus on EC2 Ubuntu
-  hosts: ec2-inventory # AWX 인벤토리의 그룹명
-  gather_facts: yes #원격 호스트의 정보 수집 여부
-  become: yes # EC2에 파일을 배포할 시 권한문제 발생할 경우 sudo 실행
+- name: Rocky Linux 8 서버 초기 설정 및 Python 3.13.3 설치
+  hosts: all # AWX 인벤토리 그룹
+  gather_facts: yes
+  become: yes # sudo 권한 상승
 
   vars:
-    nexus_url: "http://172.17.0.1:8081/repository/test-repo/test/Python-3.13.3.tgz" # Nexus의 python3.tgz 파일 경로
-    download_dir: "/tmp/python_install" #EC2 Ubuntu에 임시로 저장하는 경로
-    install_dir: "/home/ubuntu" # 실제 Python 을 설치하는 경로
-    python_tgz_name: "Python-3.13.3.tgz" # 다운로드할 파일 이름
+    download_dir: "/tmp/python_install"
+    install_base_dir: "/opt" # RHEL 계열 관례상 /opt 사용
+    python_extracted_dir_name: "Python-3.13.3"
+    python_tgz_name: "Python-3.13.3.tgz"
+    python_install_path: "/opt/python-3.13.3"
+    ansible_user_name: "ansible"
+    # AWX/Ansible 접속을 위한 퍼블릭 키 (사용자 제공)
+    ansible_user_pubkey: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDbFz/ENHpySuQXOgA8O9HtRDXs/DjRaEABrelhQKWcBEDCO1xFdQUeeUSkXY5FmMZXzJL+nkWQeECGm2dOcukjAwlCAyefuwq4qyenePcnmC9URTmqNDXOnrlOJH8/QQk2VjnzdzfBJjaKlMT230qGNWBA/e2rNWm/eIxiSKfcPggz/SzoYoBQs2t3fEgXnTSIl9HmZrPRDSOvcwZwvkiAWWMNlF0cUShIIfeeV36DALR+ne0y3Bnz7mypCdLKsQpROnhAmtsTVZHc/yh/39nsqgD6Fzr6wzoU/s7cCL4jEtfBH/2UT5u3AJO8HQGhykOgQJtwzs88bs/VFSF3Tt4l2eQ1aJKCu9HqFDofmmACyStCFXE7xQYBRJGFFNrKllFgiZ+LqoIAyrbok+gA1xUxPMf0fOx4tcdGn1MPWWQfrJq0NfTDn5dvM7Mb1nC2NFkhzLREQZbdI4vm45CinIA95NmgE5+KOuZk7d2gc7Hrtpk5JvFEKOvcPw5M8j3w+tYKPfQjyW8DLXBWDK/3ys5LZgEsrjd3XWaJSFDlHPJe9VLseD+HfG4xsOs7iJ64yuh169sZwy4PSPDSwcPdFwdqQrZ06ISjPNkWmLJCfxVgwKo/OCNKSjrKFHxZqHEWikRSMSzl3DQm/WF5pQcZQzXV3rb6xQhpVLI4b8j5RQ== awx-rocky"
 
   tasks:
-    - name: EC2에 Python 임시 다운로드
-      ansible.builtin.file:
+    # 디버그 태스크: ansible_os_family 값 확인
+    - name: Debug ansible_os_family
+      debug:
+        msg: "ansible_os_family is: {{ ansible_os_family }}"
+
+    # --- 초기 서버 설정 시작 ---
+
+    # 모든 설치된 패키지를 최신 버전으로 업데이트
+    - name: Update all installed packages
+      dnf:
+        name: "*"
+        state: latest
+        update_cache: yes
+      when: ansible_os_family == "RedHat" # Rocky Linux는 일반적으로 RedHat 계열로 인식됨
+
+    # 서버 설정 및 Ansible 실행에 필요한 필수 패키지 설치
+    - name: Install essential packages for server setup and Ansible
+      dnf:
+        name:
+          - net-tools
+          - sudo
+          - python36 # 대상 서버에 Python이 없거나 Ansible이 필요로 할 경우를 대비
+          - openssh-server
+          - which
+        state: present
+        update_cache: yes
+      when: ansible_os_family == "RedHat"
+
+    # DNF 캐시 정리
+    - name: Clean DNF cache
+      command: dnf clean all
+      args:
+        warn: false # 'dnf clean all'은 항상 변경된 것으로 보고되므로 경고 끄기
+      when: ansible_os_family == "RedHat"
+
+    # /run/nologin 파일 제거 (SSH 로그인 오류 방지)
+    - name: Remove /run/nologin file if it exists
+      file:
+        path: /run/nologin
+        state: absent
+
+    # 모든 SSH 호스트 키 자동 생성
+    - name: Generate all SSH host keys
+      command: ssh-keygen -A
+      args:
+        creates: /etc/ssh/ssh_host_rsa_key # 이미 존재하면 실행하지 않도록 Idempotency 체크
+
+    # SSH 서비스가 시작되고 부팅 시 자동 실행되도록 설정
+    - name: Ensure SSH service is started and enabled
+      service:
+        name: sshd
+        state: started
+        enabled: yes
+
+    # 'ansible' 사용자 계정 생성 및 홈 디렉토리 설정
+    - name: Create Ansible user
+      user:
+        name: "{{ ansible_user_name }}"
+        state: present
+        create_home: yes # 홈 디렉토리 자동 생성
+
+    # 'ansible' 사용자에게 NOPASSWD sudo 권한 부여
+    - name: Set NOPASSWD sudo for Ansible user
+      copy:
+        content: "{{ ansible_user_name }} ALL=(ALL) NOPASSWD: ALL"
+        dest: "/etc/sudoers.d/{{ ansible_user_name }}"
+        mode: '0440' # 파일 권한 설정 (읽기 전용)
+        validate: '/usr/sbin/visudo -cf %s' # sudoers 파일 문법 유효성 검사
+
+    # 'ansible' 사용자의 .ssh 디렉토리 생성
+    - name: Create .ssh directory for Ansible user
+      file:
+        path: "/home/{{ ansible_user_name }}/.ssh"
+        state: directory
+        owner: "{{ ansible_user_name }}"
+        group: "{{ ansible_user_name }}"
+        mode: '0700' # 소유자만 읽기/쓰기/실행 가능
+
+    # 'ansible' 사용자의 authorized_keys 파일에 퍼블릭 키 추가
+    - name: Add public key to authorized_keys for Ansible user
+      copy:
+        content: "{{ ansible_user_pubkey }}"
+        dest: "/home/{{ ansible_user_name }}/.ssh/authorized_keys"
+        owner: "{{ ansible_user_name }}"
+        group: "{{ ansible_user_name }}"
+        mode: '0600' # 소유자만 읽기/쓰기 가능
+
+    # --- 초기 서버 설정 끝 ---
+
+    # --- Python 3.13.3 설치 시작 (기존 플레이북 내용) ---
+
+    # 1) 임시 다운로드 디렉터리 생성
+    - name: Create temporary download directory
+      file:
         path: "{{ download_dir }}"
         state: directory
         mode: '0755'
 
-    - name: Download python3.tgz from Nexus
-      ansible.builtin.get_url:
-        url: "{{ nexus_url }}"
+    # 2) Nexus에서 Python tarball 다운로드
+    - name: Download Python tarball from Nexus
+      get_url:
+        url: "http://{{ REPO_URL }}/repository/kgh5865/python/Python-3.13.3.tgz"
+        url_username: "{{ REPO_USER }}"
+        url_password: "{{ REPO_PASS }}"
         dest: "{{ download_dir }}/{{ python_tgz_name }}"
-        username: "{{ nexus_username | default(omit) }}" # Nexus Credential에서 가져옴, default(omit) : 변수가 정의되지 않았을 때
-        password: "{{ nexus_password | default(omit) }}" # Nexus Credential에서 가져옴
-        validate_certs: no # 개발 환경에서는 no로 설정할 수 있지만, 프로덕션에서는 CA 인증서 유효성 검사 필요
+        validate_certs: no # Nexus 서버의 인증서 유효성 검사 비활성화 (필요시)
 
-    - name: Ensure install directory exists
-      ansible.builtin.file:
-        path: "{{ install_dir }}"
+    # 3) /opt 디렉토리가 존재하는지 확인
+    - name: Ensure install base directory exists
+      file:
+        path: "{{ install_base_dir }}"
         state: directory
         mode: '0755'
 
-    - name: Unarchive python3.tgz
-      ansible.builtin.unarchive:
+    # 4) 다운로드한 Python 소스 압축 해제
+    - name: Extract Python source
+      unarchive:
         src: "{{ download_dir }}/{{ python_tgz_name }}"
-        dest: "{{ install_dir }}"
-        remote_src: yes # 원격지에서 다운로드한 파일임을 명시
+        dest: "{{ install_base_dir }}"
+        remote_src: yes # 원격 서버에서 압축 해제
 
-    - name: Run any necessary setup scripts (if included in the tgz)
-      ansible.builtin.shell: |
-        tar xvzf Python-3.13.3.tgz
-        cd Python-3.13.3.tgz
-        ./configure
-        make
-        sudo make install
-        echo "Check if there's a setup script inside {{ install_dir }}"
+    # 5) Python 빌드에 필요한 종속성 패키지 설치 (Rocky 8)
+    - name: Install build dependencies (Rocky 8)
+      dnf:
+        name:
+          - gcc
+          - make
+          - openssl-devel
+          - bzip2-devel
+          - libffi-devel
+          - zlib-devel
+          - readline-devel
+          - sqlite-devel
+          - xz-devel
+          - ncurses-devel
+          - wget
+          - curl
+          - tar
+          - findutils # 'find' 명령어 누락 오류 해결을 위해 추가
+        state: latest # 최신 버전으로 설치
+        update_cache: yes
+      when: ansible_os_family == "RedHat"
+
+    # 6) Python 소스 Configure, Compile, Install
+    - name: Configure, compile and install Python
+      shell: |
+        ./configure --enable-optimizations --prefix={{ python_install_path }}
+        make -j$(nproc)
+        make install
       args:
-        chdir: "{{ install_dir }}"
-      when: false # 실제 설치 스크립트가 있다면 true로 변경하고 내용 수정
+        chdir: "{{ install_base_dir }}/{{ python_extracted_dir_name }}" # 압축 해제된 디렉토리로 이동
+        creates: "{{ python_install_path }}/bin/python3" # 이미 설치되어 있으면 다시 실행하지 않도록 Idempotency 체크
 
-    - name: Create symbolic link for python3 (if not already in path)
-      ansible.builtin.file:
-        src: "{{ install_dir }}/bin/python3" # 압축 해제된 python3 실행 파일 경로 확인 필요
+    # 7) /usr/local/bin에 새로 설치된 Python 3.13.3으로 심볼릭 링크 생성
+    - name: Create python3 symlink in /usr/local/bin
+      file:
+        src: "{{ python_install_path }}/bin/python3"
         dest: "/usr/local/bin/python3"
         state: link
-        force: yes # 기존 링크가 있다면 덮어씁니다.
+        force: yes # 기존 링크가 있다면 강제로 덮어쓰기
 
-    - name: Verify Python 3 installation
-      ansible.builtin.command: python3 --version
+    # 8) 설치된 Python 버전 확인
+    - name: Check Python version
+      command: python3 --version
       register: python_version_output
-      changed_when: false
+      changed_when: false # 이 태스크는 시스템을 변경하지 않으므로 변경 없음으로 표시
 
-    - name: Display Python 3 version
-      ansible.builtin.debug:
+    # 9) 설치된 Python 버전 출력
+    - name: Show installed Python version
+      debug:
         msg: "Python 3 installed version: {{ python_version_output.stdout }}"
